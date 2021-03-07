@@ -5944,6 +5944,7 @@ __webpack_require__.d(__webpack_exports__, "store", function() { return /* reexp
 __webpack_require__.d(__webpack_exports__, "createBlock", function() { return /* reexport */ createBlock; });
 __webpack_require__.d(__webpack_exports__, "createBlocksFromInnerBlocksTemplate", function() { return /* reexport */ createBlocksFromInnerBlocksTemplate; });
 __webpack_require__.d(__webpack_exports__, "cloneBlock", function() { return /* reexport */ cloneBlock; });
+__webpack_require__.d(__webpack_exports__, "__experimentalCloneSanitizedBlock", function() { return /* reexport */ __experimentalCloneSanitizedBlock; });
 __webpack_require__.d(__webpack_exports__, "getPossibleBlockTransformations", function() { return /* reexport */ getPossibleBlockTransformations; });
 __webpack_require__.d(__webpack_exports__, "switchToBlockType", function() { return /* reexport */ switchToBlockType; });
 __webpack_require__.d(__webpack_exports__, "getBlockTransforms", function() { return /* reexport */ getBlockTransforms; });
@@ -7346,7 +7347,21 @@ var serverSideBlockDefinitions = {};
 // eslint-disable-next-line camelcase
 
 function unstable__bootstrapServerSideBlockDefinitions(definitions) {
-  serverSideBlockDefinitions = registration_objectSpread(registration_objectSpread({}, serverSideBlockDefinitions), definitions);
+  for (var _i = 0, _Object$keys = Object.keys(definitions); _i < _Object$keys.length; _i++) {
+    var blockName = _Object$keys[_i];
+
+    // Don't overwrite if already set. It covers the case when metadata
+    // was initialized from the server.
+    if (serverSideBlockDefinitions[blockName]) {
+      continue;
+    }
+
+    serverSideBlockDefinitions[blockName] = Object(external_lodash_["mapKeys"])(Object(external_lodash_["pickBy"])(definitions[blockName], function (value) {
+      return !Object(external_lodash_["isNil"])(value);
+    }), function (value, key) {
+      return Object(external_lodash_["camelCase"])(key);
+    });
+  }
 }
 /**
  * Registers a new block provided a unique name and an object defining its
@@ -7373,9 +7388,7 @@ function registerBlockType(name, settings) {
     save: function save() {
       return null;
     }
-  }, Object(external_lodash_["pickBy"])(Object(external_lodash_["get"])(serverSideBlockDefinitions, name, {}), function (value) {
-    return !Object(external_lodash_["isNil"])(value);
-  })), settings);
+  }, serverSideBlockDefinitions === null || serverSideBlockDefinitions === void 0 ? void 0 : serverSideBlockDefinitions[name]), settings);
 
   if (typeof name !== 'string') {
     console.error('Block names must be strings.');
@@ -7795,8 +7808,32 @@ function createBlocksFromInnerBlocksTemplate() {
   });
 }
 /**
- * Given a block object, returns a copy of the block object, optionally merging
- * new attributes and/or replacing its inner blocks.
+ * Given a block object, returns a copy of the block object while sanitizing its attributes,
+ * optionally merging new attributes and/or replacing its inner blocks.
+ *
+ * @param {Object} block              Block instance.
+ * @param {Object} mergeAttributes    Block attributes.
+ * @param {?Array} newInnerBlocks     Nested blocks.
+ *
+ * @return {Object} A cloned block.
+ */
+
+function __experimentalCloneSanitizedBlock(block) {
+  var mergeAttributes = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+  var newInnerBlocks = arguments.length > 2 ? arguments[2] : undefined;
+  var clientId = Object(v4["a" /* default */])();
+  var sanitizedAttributes = sanitizeBlockAttributes(block.name, factory_objectSpread(factory_objectSpread({}, block.attributes), mergeAttributes));
+  return factory_objectSpread(factory_objectSpread({}, block), {}, {
+    clientId: clientId,
+    attributes: sanitizedAttributes,
+    innerBlocks: newInnerBlocks || block.innerBlocks.map(function (innerBlock) {
+      return __experimentalCloneSanitizedBlock(innerBlock);
+    })
+  });
+}
+/**
+ * Given a block object, returns a copy of the block object,
+ * optionally merging new attributes and/or replacing its inner blocks.
  *
  * @param {Object} block              Block instance.
  * @param {Object} mergeAttributes    Block attributes.
@@ -7809,10 +7846,9 @@ function cloneBlock(block) {
   var mergeAttributes = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
   var newInnerBlocks = arguments.length > 2 ? arguments[2] : undefined;
   var clientId = Object(v4["a" /* default */])();
-  var sanitizedAttributes = sanitizeBlockAttributes(block.name, factory_objectSpread(factory_objectSpread({}, block.attributes), mergeAttributes));
   return factory_objectSpread(factory_objectSpread({}, block), {}, {
     clientId: clientId,
-    attributes: sanitizedAttributes,
+    attributes: factory_objectSpread(factory_objectSpread({}, block.attributes), mergeAttributes),
     innerBlocks: newInnerBlocks || block.innerBlocks.map(function (innerBlock) {
       return cloneBlock(innerBlock);
     })
